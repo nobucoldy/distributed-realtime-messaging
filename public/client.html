@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GatewayWorker Chat Demo</title>
+  <style>
+    :root {
+      --bg: #eef2ef;
+      --panel: #ffffff;
+      --ink: #17201a;
+      --muted: #617069;
+      --line: #cfd8d2;
+      --accent: #0f766e;
+      --accent-strong: #0b5f59;
+      --warn: #a54800;
+      --good: #147344;
+      --shadow: 0 16px 40px rgba(23, 32, 26, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(135deg, rgba(15, 118, 110, 0.14), transparent 34%),
+        linear-gradient(315deg, rgba(165, 72, 0, 0.12), transparent 30%),
+        var(--bg);
+    }
+
+    .app {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 1;
+    }
+
+    .subtitle {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .status {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      font-weight: 700;
+      min-width: 128px;
+      text-align: center;
+    }
+
+    .status.connected {
+      color: var(--good);
+      border-color: rgba(20, 115, 68, 0.35);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      margin: 0;
+      padding: 16px 18px 0;
+      font-size: 17px;
+    }
+
+    .section {
+      padding: 16px 18px 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section:first-of-type {
+      border-top: 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font: inherit;
+      color: var(--ink);
+      background: #fbfdfb;
+    }
+
+    textarea {
+      min-height: 76px;
+      resize: vertical;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #2f3d36;
+    }
+
+    button.warning {
+      background: var(--warn);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .messages {
+      height: 560px;
+      overflow: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background:
+        linear-gradient(rgba(255,255,255,0.84), rgba(255,255,255,0.84)),
+        repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(15, 118, 110, 0.07) 32px);
+    }
+
+    .message {
+      width: min(760px, 100%);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+
+    .message.incoming {
+      border-left: 5px solid var(--accent);
+    }
+
+    .message.system {
+      border-left: 5px solid var(--warn);
+    }
+
+    .message .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 860px) {
+      header,
+      .layout {
+        display: block;
+      }
+
+      .status {
+        margin-top: 14px;
+        text-align: left;
+      }
+
+      .panel {
+        margin-bottom: 16px;
+      }
+
+      .messages {
+        height: 430px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>GatewayWorker Chat Demo</h1>
+        <p class="subtitle">WebSocket client for Redis presence and Redis queue messaging.</p>
+      </div>
+      <div id="status" class="status">Disconnected</div>
+    </header>
+
+    <div class="layout">
+      <aside class="panel">
+        <h2>Connection</h2>
+        <div class="section">
+          <label>
+            WebSocket URL
+            <input id="wsUrl" value="ws://127.0.0.1:7272">
+          </label>
+          <div class="actions">
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn" class="secondary" disabled>Disconnect</button>
+          </div>
+        </div>
+
+        <h2>Identity</h2>
+        <div class="section">
+          <div class="row">
+            <label>
+              UID
+              <input id="uid" value="user_1">
+            </label>
+            <label>
+              Name
+              <input id="name" value="Nguyen Van A">
+            </label>
+          </div>
+          <button id="loginBtn" disabled>Login</button>
+        </div>
+
+        <h2>Room</h2>
+        <div class="section">
+          <label>
+            Room ID
+            <input id="roomId" value="room_1">
+          </label>
+          <div class="actions">
+            <button id="joinBtn" disabled>Join</button>
+            <button id="onlineBtn" class="secondary" disabled>Online Users</button>
+          </div>
+        </div>
+
+        <h2>Messages</h2>
+        <div class="section">
+          <label>
+            Group content
+            <textarea id="groupContent">Hello everyone</textarea>
+          </label>
+          <button id="groupBtn" disabled>Send Group</button>
+        </div>
+
+        <div class="section">
+          <label>
+            To UID
+            <input id="toUid" value="user_2">
+          </label>
+          <label>
+            Private content
+            <textarea id="privateContent">Hello</textarea>
+          </label>
+          <button id="privateBtn" disabled>Send Private</button>
+        </div>
+
+        <div class="section">
+          <p class="hint">For queued messages, keep `php Applications/Chat/queue_consumer.php` running in a terminal.</p>
+          <button id="clearBtn" class="warning">Clear Log</button>
+        </div>
+      </aside>
+
+      <section class="panel">
+        <h2>Event Log</h2>
+        <div id="messages" class="messages"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const elements = {
+      status: document.querySelector('#status'),
+      messages: document.querySelector('#messages'),
+      wsUrl: document.querySelector('#wsUrl'),
+      uid: document.querySelector('#uid'),
+      name: document.querySelector('#name'),
+      roomId: document.querySelector('#roomId'),
+      groupContent: document.querySelector('#groupContent'),
+      toUid: document.querySelector('#toUid'),
+      privateContent: document.querySelector('#privateContent'),
+      connectBtn: document.querySelector('#connectBtn'),
+      disconnectBtn: document.querySelector('#disconnectBtn'),
+      loginBtn: document.querySelector('#loginBtn'),
+      joinBtn: document.querySelector('#joinBtn'),
+      onlineBtn: document.querySelector('#onlineBtn'),
+      groupBtn: document.querySelector('#groupBtn'),
+      privateBtn: document.querySelector('#privateBtn'),
+      clearBtn: document.querySelector('#clearBtn')
+    };
+
+    let socket = null;
+
+    function setConnected(connected) {
+      elements.status.textContent = connected ? 'Connected' : 'Disconnected';
+      elements.status.classList.toggle('connected', connected);
+      elements.connectBtn.disabled = connected;
+      elements.disconnectBtn.disabled = !connected;
+      elements.loginBtn.disabled = !connected;
+      elements.joinBtn.disabled = !connected;
+      elements.onlineBtn.disabled = !connected;
+      elements.groupBtn.disabled = !connected;
+      elements.privateBtn.disabled = !connected;
+    }
+
+    function logMessage(title, data, kind = 'incoming') {
+      const item = document.createElement('article');
+      item.className = `message ${kind}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.innerHTML = `<span>${title}</span><span>${new Date().toLocaleTimeString()}</span>`;
+
+      const pre = document.createElement('pre');
+      pre.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+
+      item.append(meta, pre);
+      elements.messages.append(item);
+      elements.messages.scrollTop = elements.messages.scrollHeight;
+    }
+
+    function send(payload) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        logMessage('Client error', 'WebSocket is not connected.', 'system');
+        return;
+      }
+
+      socket.send(JSON.stringify(payload));
+      logMessage('Sent', payload, 'system');
+    }
+
+    elements.connectBtn.addEventListener('click', () => {
+      socket = new WebSocket(elements.wsUrl.value.trim());
+
+      socket.addEventListener('open', () => {
+        setConnected(true);
+        logMessage('Client', 'WebSocket connected.', 'system');
+      });
+
+      socket.addEventListener('message', (event) => {
+        try {
+          logMessage('Received', JSON.parse(event.data), 'incoming');
+        } catch {
+          logMessage('Received raw', event.data, 'incoming');
+        }
+      });
+
+      socket.addEventListener('close', () => {
+        setConnected(false);
+        logMessage('Client', 'WebSocket disconnected.', 'system');
+      });
+
+      socket.addEventListener('error', () => {
+        logMessage('Client error', 'WebSocket error. Check GatewayWorker server.', 'system');
+      });
+    });
+
+    elements.disconnectBtn.addEventListener('click', () => {
+      if (socket) {
+        socket.close();
+      }
+    });
+
+    elements.loginBtn.addEventListener('click', () => {
+      send({
+        type: 'login',
+        uid: elements.uid.value.trim(),
+        name: elements.name.value.trim()
+      });
+    });
+
+    elements.joinBtn.addEventListener('click', () => {
+      send({
+        type: 'join_room',
+        room_id: elements.roomId.value.trim()
+      });
+    });
+
+    elements.onlineBtn.addEventListener('click', () => {
+      send({
+        type: 'room_online_users',
+        room_id: elements.roomId.value.trim()
+      });
+    });
+
+    elements.groupBtn.addEventListener('click', () => {
+      send({
+        type: 'group_message',
+        room_id: elements.roomId.value.trim(),
+        content: elements.groupContent.value.trim()
+      });
+    });
+
+    elements.privateBtn.addEventListener('click', () => {
+      send({
+        type: 'private_message',
+        to_uid: elements.toUid.value.trim(),
+        content: elements.privateContent.value.trim()
+      });
+    });
+
+    elements.clearBtn.addEventListener('click', () => {
+      elements.messages.textContent = '';
+    });
+
+    setConnected(false);
+  </script>
+</body>
+</html>
