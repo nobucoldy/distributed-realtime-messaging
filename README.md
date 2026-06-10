@@ -199,8 +199,3 @@ redis-cli llen queue:messages
 redis-cli llen queue:messages:dead
 ```
 
-## Tài Liệu
-
-- `docs/feature-work.md`: đặc tả feature và thiết kế.
-- `docs/development-log.md`: nhật ký từng bước phát triển.
-- `docs/demo-guide.md`: hướng dẫn demo và checklist thuyết trình.
