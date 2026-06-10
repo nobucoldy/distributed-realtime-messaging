@@ -9,6 +9,7 @@ if (!defined('GLOBAL_START')) {
     require_once __DIR__ . '/../../vendor/autoload.php';
 }
 
+require_once __DIR__ . '/RedisClient.php';
 require_once __DIR__ . '/Events.php';
 
 $worker = new BusinessWorker();

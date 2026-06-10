@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace Applications\Chat;
 
 use GatewayWorker\Lib\Gateway;
+use Throwable;
 
 class Events
 {
-    private static array $clientRooms = [];
-    private static array $roomUsers = [];
-
     public static function onConnect(string $clientId): void
     {
         Gateway::sendToClient($clientId, self::json([
@@ -62,7 +60,11 @@ class Events
 
     public static function onClose(string $clientId): void
     {
-        self::removeClientFromRooms($clientId);
+        try {
+            self::removeClientPresence($clientId);
+        } catch (Throwable) {
+            // The connection is already closed, so cleanup errors are only logged by Workerman.
+        }
     }
 
     private static function handleLogin(string $clientId, array $payload): void
@@ -79,6 +81,13 @@ class Events
             'uid' => $uid,
             'name' => $name,
         ]);
+
+        try {
+            self::saveLoginPresence($clientId, $uid, $name);
+        } catch (Throwable $exception) {
+            self::sendError($clientId, 'redis_unavailable', $exception->getMessage());
+            return;
+        }
 
         Gateway::sendToClient($clientId, self::json([
             'type' => 'login_success',
@@ -101,8 +110,13 @@ class Events
             return;
         }
 
-        Gateway::joinGroup($clientId, $roomId);
-        self::addClientToRoom($clientId, $roomId, $session);
+        try {
+            self::saveRoomPresence($clientId, $roomId, $session);
+            Gateway::joinGroup($clientId, $roomId);
+        } catch (Throwable $exception) {
+            self::sendError($clientId, 'redis_unavailable', $exception->getMessage());
+            return;
+        }
 
         Gateway::sendToClient($clientId, self::json([
             'type' => 'join_room_success',
@@ -180,10 +194,17 @@ class Events
             return;
         }
 
+        try {
+            $users = self::getRoomOnlineUsers($roomId);
+        } catch (Throwable $exception) {
+            self::sendError($clientId, 'redis_unavailable', $exception->getMessage());
+            return;
+        }
+
         Gateway::sendToClient($clientId, self::json([
             'type' => 'room_online_users',
             'room_id' => $roomId,
-            'users' => array_values(self::$roomUsers[$roomId] ?? []),
+            'users' => $users,
         ]));
     }
 
@@ -198,34 +219,92 @@ class Events
         return $session;
     }
 
-    private static function addClientToRoom(string $clientId, string $roomId, array $session): void
+    private static function saveLoginPresence(string $clientId, string $uid, string $name): void
     {
-        $uid = $session['uid'];
-        self::$clientRooms[$clientId][$roomId] = true;
-        self::$roomUsers[$roomId][$uid] = [
+        $redis = RedisClient::instance();
+        $now = time();
+
+        $redis->set("presence:client:{$clientId}", $uid);
+        $redis->sAdd("presence:user:{$uid}:clients", $clientId);
+        $redis->hSet('presence:users', $uid, self::json([
             'uid' => $uid,
-            'name' => $session['name'],
+            'name' => $name,
             'online' => true,
-        ];
+            'last_seen' => $now,
+        ]));
     }
 
-    private static function removeClientFromRooms(string $clientId): void
+    private static function saveRoomPresence(string $clientId, string $roomId, array $session): void
     {
-        $session = Gateway::getSession($clientId);
-        if (!is_array($session) || empty($session['uid'])) {
-            unset(self::$clientRooms[$clientId]);
+        $uid = $session['uid'];
+        $redis = RedisClient::instance();
+
+        $redis->sAdd("presence:user:{$uid}:rooms", $roomId);
+        $redis->sAdd("presence:client:{$clientId}:rooms", $roomId);
+        $redis->sAdd("presence:room:{$roomId}:users", $uid);
+    }
+
+    private static function getRoomOnlineUsers(string $roomId): array
+    {
+        $redis = RedisClient::instance();
+        $uids = $redis->sMembers("presence:room:{$roomId}:users");
+        $users = [];
+
+        foreach ($uids as $uid) {
+            if (!is_string($uid)) {
+                continue;
+            }
+
+            $rawUser = $redis->hGet('presence:users', $uid);
+            if ($rawUser === null) {
+                continue;
+            }
+
+            $user = json_decode($rawUser, true);
+            if (!is_array($user) || ($user['online'] ?? false) !== true) {
+                continue;
+            }
+
+            $users[] = [
+                'uid' => $user['uid'] ?? $uid,
+                'name' => $user['name'] ?? '',
+                'online' => true,
+            ];
+        }
+
+        return $users;
+    }
+
+    private static function removeClientPresence(string $clientId): void
+    {
+        $redis = RedisClient::instance();
+        $uid = $redis->get("presence:client:{$clientId}");
+        if ($uid === null) {
             return;
         }
 
-        $uid = $session['uid'];
-        foreach (array_keys(self::$clientRooms[$clientId] ?? []) as $roomId) {
-            unset(self::$roomUsers[$roomId][$uid]);
-            if (self::$roomUsers[$roomId] === []) {
-                unset(self::$roomUsers[$roomId]);
+        $clientRoomsKey = "presence:client:{$clientId}:rooms";
+        $rooms = $redis->sMembers($clientRoomsKey);
+        $redis->sRem("presence:user:{$uid}:clients", $clientId);
+
+        if ($redis->sCard("presence:user:{$uid}:clients") === 0) {
+            foreach ($rooms as $roomId) {
+                if (is_string($roomId)) {
+                    $redis->sRem("presence:room:{$roomId}:users", $uid);
+                }
             }
+
+            $rawUser = $redis->hGet('presence:users', $uid);
+            $user = is_string($rawUser) ? json_decode($rawUser, true) : [];
+            $redis->hSet('presence:users', $uid, self::json([
+                'uid' => $uid,
+                'name' => is_array($user) ? ($user['name'] ?? '') : '',
+                'online' => false,
+                'last_seen' => time(),
+            ]));
         }
 
-        unset(self::$clientRooms[$clientId]);
+        $redis->del("presence:client:{$clientId}", $clientRoomsKey);
     }
 
     private static function requiredString(array $payload, string $field): ?string
