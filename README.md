@@ -1,13 +1,13 @@
 # Distributed Realtime Messaging with GatewayWorker
 
-Demo chat realtime phan tan bang PHP, GatewayWorker va Redis.
+Demo chat realtime phân tán bằng PHP, GatewayWorker và Redis.
 
-Du an minh hoa 2 tinh nang phan tan:
+Dự án minh họa 2 tính năng phân tán:
 
-- Online Presence phan tan bang Redis.
-- Distributed Message Queue bang Redis Queue, co retry va dead letter queue.
+- Online Presence phân tán bằng Redis.
+- Distributed Message Queue bằng Redis Queue, có retry và dead letter queue.
 
-## Kien Truc
+## Kiến Trúc
 
 ```text
 WebSocket Client
@@ -26,34 +26,34 @@ GatewayWorker BusinessWorker
           Queue Consumer
 ```
 
-Vai tro:
+Vai trò:
 
-- Register: giup Gateway va BusinessWorker tim thay nhau.
-- Gateway: giu ket noi WebSocket voi client.
-- BusinessWorker: xu ly logic trong `Applications/Chat/Events.php`.
-- Redis: luu presence va queue message.
-- Queue Consumer: doc job va day message bang `Gateway::sendToGroup` hoac
+- Register: giúp Gateway và BusinessWorker tìm thấy nhau.
+- Gateway: giữ kết nối WebSocket với client.
+- BusinessWorker: xử lý logic trong `Applications/Chat/Events.php`.
+- Redis: lưu presence và queue message.
+- Queue Consumer: đọc job và đẩy message bằng `Gateway::sendToGroup` hoặc
   `Gateway::sendToUid`.
 
-## Yeu Cau
+## Yêu Cầu
 
 - PHP CLI.
 - Composer dependencies trong `vendor/`.
-- Redis server tai `127.0.0.1:6379`.
+- Redis server tại `127.0.0.1:6379`.
 
-Kiem tra Redis:
+Kiểm tra Redis:
 
 ```bash
 redis-cli ping
 ```
 
-Neu Redis chua chay:
+Nếu Redis chưa chạy:
 
 ```bash
 sudo service redis-server start
 ```
 
-## Chay Server
+## Chạy Server
 
 Start GatewayWorker:
 
@@ -61,7 +61,7 @@ Start GatewayWorker:
 php start.php start -d
 ```
 
-Kiem tra trang thai:
+Kiểm tra trạng thái:
 
 ```bash
 php start.php status
@@ -73,21 +73,21 @@ Stop GatewayWorker:
 php start.php stop
 ```
 
-Sau khi sua code, restart:
+Sau khi sửa code, restart:
 
 ```bash
 php start.php restart -d
 ```
 
-## Chay Queue Consumer
+## Chạy Queue Consumer
 
-Consumer chay lien tuc:
+Consumer chạy liên tục:
 
 ```bash
 php Applications/Chat/queue_consumer.php
 ```
 
-Consumer xu ly mot job roi thoat:
+Consumer xử lý một job rồi thoát:
 
 ```bash
 php Applications/Chat/queue_consumer.php --once
@@ -95,30 +95,30 @@ php Applications/Chat/queue_consumer.php --once
 
 ## Client HTML
 
-Mo file sau bang browser:
+Mở file sau bằng browser:
 
 ```text
 public/client.html
 ```
 
-Client ket noi mac dinh toi:
+Client kết nối mặc định tới:
 
 ```text
 ws://127.0.0.1:7272
 ```
 
-Thu tu demo:
+Thứ tự demo:
 
 1. Start Redis.
 2. Start GatewayWorker.
 3. Start queue consumer.
-4. Mo 2 tab `public/client.html`.
+4. Mở 2 tab `public/client.html`.
 5. Tab 1 login `user_1`, tab 2 login `user_2`.
-6. Ca 2 tab join `room_1`.
-7. Bam online users de xem danh sach trong room.
-8. Gui group message va private message.
+6. Cả 2 tab join `room_1`.
+7. Bấm online users để xem danh sách trong room.
+8. Gửi group message và private message.
 
-## Test Tu Dong
+## Test Tự Động
 
 Test Online Presence:
 
@@ -126,20 +126,20 @@ Test Online Presence:
 php scripts/test_presence.php
 ```
 
-Test Redis Queue, retry va dead letter queue:
+Test Redis Queue, retry và dead letter queue:
 
 ```bash
 php scripts/test_queue.php
 ```
 
-Ket qua mong doi:
+Kết quả mong đợi:
 
 ```text
 Presence test passed for room_presence_xxxxxxxx
 Queue test passed for room_queue_xxxxxxxx
 ```
 
-## Message JSON Ho Tro
+## Message JSON Hỗ Trợ
 
 Login:
 
@@ -153,7 +153,7 @@ Join room:
 {"type":"join_room","room_id":"room_1"}
 ```
 
-Lay danh sach online trong room:
+Lấy danh sách online trong room:
 
 ```json
 {"type":"room_online_users","room_id":"room_1"}
@@ -191,7 +191,7 @@ queue:messages
 queue:messages:dead
 ```
 
-Kiem tra key:
+Kiểm tra key:
 
 ```bash
 redis-cli --scan --pattern "presence:*"
@@ -199,4 +199,8 @@ redis-cli llen queue:messages
 redis-cli llen queue:messages:dead
 ```
 
+## Tài Liệu
 
+- `docs/feature-work.md`: đặc tả feature và thiết kế.
+- `docs/development-log.md`: nhật ký từng bước phát triển.
+- `docs/demo-guide.md`: hướng dẫn demo và checklist thuyết trình.
