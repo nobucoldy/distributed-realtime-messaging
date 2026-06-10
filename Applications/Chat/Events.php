@@ -139,16 +139,24 @@ class Events
             return;
         }
 
-        $response = [
-            'type' => 'group_message',
-            'room_id' => $roomId,
-            'from_uid' => $session['uid'],
-            'from_name' => $session['name'],
-            'content' => $content,
-            'created_at' => time(),
-        ];
+        try {
+            $jobId = self::enqueueMessageJob([
+                'type' => 'group_message',
+                'room_id' => $roomId,
+                'from_uid' => $session['uid'],
+                'from_name' => $session['name'],
+                'content' => $content,
+            ]);
+        } catch (Throwable $exception) {
+            self::sendError($clientId, 'queue_unavailable', $exception->getMessage());
+            return;
+        }
 
-        Gateway::sendToGroup($roomId, self::json($response));
+        Gateway::sendToClient($clientId, self::json([
+            'type' => 'message_queued',
+            'job_id' => $jobId,
+            'message_type' => 'group_message',
+        ]));
     }
 
     private static function handlePrivateMessage(string $clientId, array $payload): void
@@ -165,20 +173,24 @@ class Events
             return;
         }
 
-        $response = [
-            'type' => 'private_message',
-            'to_uid' => $toUid,
-            'from_uid' => $session['uid'],
-            'from_name' => $session['name'],
-            'content' => $content,
-            'created_at' => time(),
-        ];
+        try {
+            $jobId = self::enqueueMessageJob([
+                'type' => 'private_message',
+                'to_uid' => $toUid,
+                'from_uid' => $session['uid'],
+                'from_name' => $session['name'],
+                'content' => $content,
+            ]);
+        } catch (Throwable $exception) {
+            self::sendError($clientId, 'queue_unavailable', $exception->getMessage());
+            return;
+        }
 
-        Gateway::sendToUid($toUid, self::json($response));
         Gateway::sendToClient($clientId, self::json([
-            'type' => 'private_message_sent',
+            'type' => 'message_queued',
+            'job_id' => $jobId,
+            'message_type' => 'private_message',
             'to_uid' => $toUid,
-            'content' => $content,
         ]));
     }
 
@@ -232,6 +244,19 @@ class Events
             'online' => true,
             'last_seen' => $now,
         ]));
+    }
+
+    private static function enqueueMessageJob(array $data): string
+    {
+        $jobId = uniqid('job_', true);
+        $job = $data + [
+            'id' => $jobId,
+            'retry' => 0,
+            'created_at' => time(),
+        ];
+
+        RedisClient::instance()->lPush('queue:messages', self::json($job));
+        return $jobId;
     }
 
     private static function saveRoomPresence(string $clientId, string $roomId, array $session): void

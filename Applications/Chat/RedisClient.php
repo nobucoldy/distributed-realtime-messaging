@@ -90,6 +90,23 @@ class RedisClient
         return is_string($value) ? $value : null;
     }
 
+    public function lPush(string $key, string $value): void
+    {
+        $this->command('LPUSH', $key, $value);
+    }
+
+    public function rPop(string $key): ?string
+    {
+        $value = $this->command('RPOP', $key);
+        return is_string($value) ? $value : null;
+    }
+
+    public function lLen(string $key): int
+    {
+        $count = $this->command('LLEN', $key);
+        return is_int($count) ? $count : 0;
+    }
+
     private function command(string ...$parts): mixed
     {
         $this->connect();
